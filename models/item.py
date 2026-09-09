@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
 
@@ -389,6 +390,323 @@ ARCHETYPE_BY_ID = {entry.archetype_id: entry for entry in ARCHETYPES}
 ELITE_RARITY_WEIGHTS = (15, 30, 40, 12, 2.7, 0.3)
 BOSS_RARITY_WEIGHTS = (0, 15, 48, 29, 7, 1)
 
+# =========================================================================
+#  Самоцветы и гнёзда (Gems & Sockets)
+# =========================================================================
+
+
+class GemType(str, Enum):
+    """Пять граней силы + алмаз. Каждый камень — свой родной стихийный/утилит."""
+
+    RUBY = "ruby"             # Огонь
+    SAPPHIRE = "sapphire"     # Холод
+    TOPAZ = "topaz"           # Молния
+    EMERALD = "emerald"       # Яд / вампиризм
+    AMETHYST = "amethyst"     # Хаос / барьер
+    DIAMOND = "diamond"       # Крит / поглощение
+
+
+# Базовый вклад камня уровня 1 (масштабируется уровнем предмета).
+GEM_BASE = {
+    GemType.RUBY: StatBlock(fire_bonus=0.04, fire_res=0.015),
+    GemType.SAPPHIRE: StatBlock(cold_bonus=0.04, cold_res=0.015),
+    GemType.TOPAZ: StatBlock(lightning_bonus=0.04, lightning_res=0.015),
+    GemType.EMERALD: StatBlock(life_leech=0.012, agility=1),
+    GemType.AMETHYST: StatBlock(chaos_bonus=0.04, damage_absorption=1),
+    GemType.DIAMOND: StatBlock(crit_chance=0.015, crit_damage=0.04),
+}
+
+GEM_NAMES = {
+    GemType.RUBY: "Рубин",
+    GemType.SAPPHIRE: "Сапфир",
+    GemType.TOPAZ: "Топаз",
+    GemType.EMERALD: "Изумруд",
+    GemType.AMETHYST: "Аметист",
+    GemType.DIAMOND: "Алмаз",
+}
+
+# Цвета сияния камней (для иконок/лучей лута).
+GEM_COLORS = {
+    GemType.RUBY: "#ff5a4d",
+    GemType.SAPPHIRE: "#4da6ff",
+    GemType.TOPAZ: "#ffd14d",
+    GemType.EMERALD: "#59e09a",
+    GemType.AMETHYST: "#c24dff",
+    GemType.DIAMOND: "#cfe8ff",
+}
+
+GEM_ORDER = tuple(GemType)
+
+
+def _gem_stats(gem_type: GemType, level: int, quality: float) -> StatBlock:
+    positive_int("level", level)
+    scale = (1.0 + (level - 1) * 0.16) * quality
+    return GEM_BASE[gem_type].scaled(scale)
+
+
+@dataclass(frozen=True)
+class Gem:
+    gem_id: str
+    gem_type: GemType | str
+    level: int = 1
+    quality: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.gem_id, str) or not self.gem_id:
+            raise ValueError("Самоцвету необходим gem_id")
+        object.__setattr__(self, "gem_type", GemType(self.gem_type))
+        positive_int("level", self.level)
+        if (
+            type(self.quality) not in (int, float)
+            or not math.isfinite(self.quality)
+            or self.quality <= 0
+        ):
+            raise ValueError("Некорректное качество самоцвета")
+
+    @property
+    def display_name(self) -> str:
+        return f"{GEM_NAMES[self.gem_type]} Lv.{self.level}"
+
+    @property
+    def stats(self) -> StatBlock:
+        return _gem_stats(self.gem_type, self.level, self.quality)
+
+    @property
+    def color(self) -> str:
+        return GEM_COLORS[self.gem_type]
+
+
+# Число гнёзд по редкости: обычный 0, редкий 1, далее растёт до 3.
+def roll_socket_count(
+    rarity: Rarity | str,
+    rng: random.Random | None = None,
+) -> int:
+    """Сколько гнёзд «пробьётся» в предмете данной редкости."""
+    rarity = Rarity(rarity)
+    tier = RARITY_ORDER.index(rarity)
+    if tier < 2:
+        return 0
+    generator = rng if rng is not None else random.Random()
+    capacity = min(tier - 1, 3)
+    # С некоторой вероятностью гнёзд меньше максимума.
+    roll = generator.random()
+    if roll < 0.35:
+        return max(1, capacity - 1)
+    if roll < 0.65:
+        return max(1, capacity - 2)
+    return capacity
+
+
+def _fresh_gem_id(gem_type: GemType, generator: random.Random) -> str:
+    return f"gem-{gem_type.value}-{generator.getrandbits(96):024x}"
+
+
+def socket_gem(
+    item: Item,
+    gem: Gem,
+    rng: random.Random | None = None,
+) -> tuple[Item, Gem | None]:
+    """Вставить самоцвет в свободное гнездо.
+
+    Статы камня сворачиваются прямо в `item.stats`, поэтому экипировка и
+    Detailed Stats учитывают самоцветы без отдельной логики. Возвращает
+    (новый предмет, камень) — либо (предмет без изменений, None), если все
+    гнёзда заняты или редкость не позволяет.
+    """
+    if not isinstance(item, Item) or not isinstance(gem, Gem):
+        raise ValueError("Некорректные аргументы вставки самоцвета")
+    if len(item.gems) >= item.sockets:
+        return item, None
+    generator = rng if rng is not None else random.Random()
+    gem_id = gem.gem_id
+    known = {entry.gem_id for entry in item.gems}
+    while gem_id in known:
+        gem_id = _fresh_gem_id(gem.gem_type, generator)
+    gem = replace(gem, gem_id=gem_id)
+    return (
+        replace(
+            item,
+            gems=item.gems + (gem,),
+            stats=item.stats + gem.stats,
+        ),
+        gem,
+    )
+
+
+def unsocket_gem(item: Item, gem_id: str) -> tuple[Item, Gem | None]:
+    """Вынуть камень из предмета, вернув и обновлённый предмет, и камень."""
+    if not isinstance(item, Item):
+        raise ValueError("Ожидается предмет")
+    target = next((entry for entry in item.gems if entry.gem_id == gem_id), None)
+    if target is None:
+        return item, None
+    return (
+        replace(
+            item,
+            gems=tuple(entry for entry in item.gems if entry.gem_id != gem_id),
+            stats=item.stats - target.stats,
+        ),
+        target,
+    )
+
+
+def gem_stats(items: tuple[Item, ...]) -> StatBlock:
+    """Суммарный вклад всех самоцветов в наборе предметов (для справки)."""
+    total = StatBlock()
+    for item in items:
+        for gem in item.gems:
+            total = total + gem.stats
+    return total
+
+
+def item_from_gem_dict(gem: dict) -> Gem:
+    return Gem(**gem)
+
+
+# =========================================================================
+#  Комплекты экипировки (Item Sets)
+# =========================================================================
+
+
+@dataclass(frozen=True)
+class ItemSet:
+    set_id: str
+    name: str
+    lore: str
+    # Бонусы за 2, 4 и 6 надетых предметов комплекта.
+    bonuses: tuple[StatBlock, StatBlock, StatBlock]
+    color: str = "#ffd17b"
+
+
+SET_TWO, SET_FOUR, SET_SIX = 0, 1, 2
+
+ITEM_SETS = (
+    ItemSet(
+        "inquisitor_oath", "Клятва Инквизитора",
+        "Священное пламя выжигает скверну из недр Бездны.",
+        (
+            StatBlock(fire_bonus=0.05, block_chance=0.02),
+            StatBlock(crit_damage=0.15, damage_absorption=3),
+            StatBlock(max_hp=180, hp_per_hit=6, all_skill_level=1),
+        ),
+    ),
+    ItemSet(
+        "hell_ash", "Пепел Преисподней",
+        "Кальдера помнит каждого, кто осмелился смотреть в её сердце.",
+        (
+            StatBlock(fire_bonus=0.07, fire_res=0.04),
+            StatBlock(chaos_bonus=0.06, mana=30),
+            StatBlock(cooldown_reduction=0.08, skill_duration=0.10),
+        ),
+    ),
+    ItemSet(
+        "veil_eternal_darkness", "Саван Вечной Тьмы",
+        "Тьма не забирает — она одаривает тех, кто пришёл за ней.",
+        (
+            StatBlock(chaos_bonus=0.06, life_leech=0.015),
+            StatBlock(evasion=0.04, crit_chance=0.02),
+            StatBlock(projectile_count=1, damage_absorption=5, hp_regen=2),
+        ),
+    ),
+    ItemSet(
+        "frost_torment", "Ледяная Пытка",
+        "Пик Мучений выстудил сталь до состояния тишины.",
+        (
+            StatBlock(cold_bonus=0.06, cold_res=0.04),
+            StatBlock(block_chance=0.02, armor=15),
+            StatBlock(strength=8, agility=8, crit_damage=0.20),
+        ),
+    ),
+    ItemSet(
+        "rotborne", "Рождённый Гнилью",
+        "Топи растят урожай, который дозревает под кожей врага.",
+        (
+            StatBlock(agility=2, damage=6),
+            StatBlock(attack_speed=0.06, life_leech=0.02),
+            StatBlock(max_hp=150, hp_per_hit=8, evasion=0.05),
+        ),
+    ),
+    ItemSet(
+        "storm_warden", "Страж Бури",
+        "Каждое звено этой кольчуги — застывшая молния.",
+        (
+            StatBlock(lightning_bonus=0.06, lightning_res=0.04),
+            StatBlock(projectile_bonus=0.05, attack_speed=0.03),
+            StatBlock(multistrike=0.10, movement_speed=80, agility=6),
+        ),
+    ),
+    ItemSet(
+        "grave_herald", "Глашатай Могил",
+        "Костяной венец не снимают — его заслуживают смертью.",
+        (
+            StatBlock(summon_damage=0.05, intelligence=3),
+            StatBlock(mana=25, crit_chance=0.02),
+            StatBlock(skill_duration=0.15, hp_per_kill=15, chaos_res=0.06),
+        ),
+    ),
+    ItemSet(
+        "sacred_light", "Священный Свет",
+        "Нимб не слепит врагов — он сжигает их суть.",
+        (
+            StatBlock(max_hp=60, skill_heal=0.04),
+            StatBlock(armor=12, block_chance=0.03),
+            StatBlock(all_skill_level=1, hp_regen=2, damage_absorption=6),
+        ),
+    ),
+)
+
+ITEM_SET_BY_ID = {entry.set_id: entry for entry in ITEM_SETS}
+# Рарности, способные носить комплект.
+SET_ELIGIBLE_TIERS = (Rarity.LEGENDARY, Rarity.IMMORTAL, Rarity.MYTHIC)
+
+
+def roll_set_id(
+    rarity: Rarity | str,
+    rng: random.Random | None = None,
+) -> str | None:
+    """Назначить предмету комплект (только высоким редкостям)."""
+    rarity = Rarity(rarity)
+    if rarity not in SET_ELIGIBLE_TIERS:
+        return None
+    generator = rng if rng is not None else random.Random()
+    chance = 0.30 if rarity == Rarity.LEGENDARY else 0.55
+    if generator.random() >= chance:
+        return None
+    return generator.choice(ITEM_SETS).set_id
+
+
+def apply_item_set_bonuses(
+    equipment: tuple[Item, ...],
+) -> tuple[StatBlock, tuple[ItemSet, int, int]]:
+    """Бонусы комплектов по надетым предметам.
+
+    Возвращает (суммарный StatBlock, список активных (сет, порог, кол-во)).
+    Пороги 2 / 4 / 6: учитывается самый высокий пройденный порог на сет.
+    """
+    if not isinstance(equipment, tuple):
+        raise ValueError("equipment должна быть tuple")
+
+    counts: dict[str, int] = {}
+    for item in equipment:
+        if item.set_id:
+            counts[item.set_id] = counts.get(item.set_id, 0) + 1
+
+    bonus = StatBlock()
+    active: list = []
+    for set_id, count in counts.items():
+        if count < 2:
+            continue
+        entry = ITEM_SET_BY_ID.get(set_id)
+        if entry is None:
+            continue
+        threshold = 2 if count < 4 else (4 if count < 6 else 6)
+        threshold_index = {2: 0, 4: 1, 6: 2}[threshold]
+        bonus = bonus + entry.bonuses[threshold_index]
+        active.append((entry, threshold, count))
+
+    return bonus, tuple(active)
+
+
 
 def positive_int(name: str, value: int, minimum: int = 1) -> None:
     if type(value) is not int or value < minimum:
@@ -435,6 +753,10 @@ class Item:
     archetype_id: str | None = None
     origin_act: str | None = None
     lore: str = ""
+    # Самоцветы и комплекты (v1.4.0).
+    sockets: int = 0
+    gems: tuple[Gem, ...] = ()
+    set_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.item_id, str) or not self.item_id:
@@ -464,6 +786,17 @@ class Item:
         if self.kind in (ItemKind.SHIELD, ItemKind.FOCUS):
             if self.slot != EquipmentSlot.OFFHAND:
                 raise ValueError("Щит/фокус должен занимать OFFHAND")
+
+        if type(self.sockets) is not int or not 0 <= self.sockets <= 3:
+            raise ValueError("Число гнёзд должно быть целым в диапазоне 0..3")
+        if type(self.gems) is not tuple or not all(
+            isinstance(gem, Gem) for gem in self.gems
+        ):
+            raise ValueError("gems должна быть tuple из Gem")
+        if len(self.gems) > self.sockets:
+            raise ValueError("Самоцветов больше, чем гнёзд")
+        if self.set_id is not None and self.set_id not in ITEM_SET_BY_ID:
+            raise ValueError("Неизвестный комплект")
 
         if self.archetype_id is not None:
             archetype_data = ARCHETYPE_BY_ID.get(self.archetype_id)
@@ -596,6 +929,43 @@ def generate_item(
     )
 
 
+def _roll_gem(rng: random.Random, level: int) -> Gem:
+    """Создать самоцвет случайной грани уровня предмета."""
+    gem_type = rng.choice(GEM_ORDER)
+    quality = rng.uniform(0.85, 1.15)
+    return Gem(
+        gem_id=_fresh_gem_id(gem_type, rng),
+        gem_type=gem_type,
+        level=level,
+        quality=quality,
+    )
+
+
+def _enrich_drop(item: Item, rng: random.Random) -> Item:
+    """Обилие лута: гнёзда с самоцветами и редкие комплекты на трофеях."""
+    sockets = roll_socket_count(item.rarity, rng)
+    enriched = replace(item, sockets=sockets)
+
+    # Самоцветы с вероятностью ~80% на гнездо.
+    for _ in range(sockets):
+        if rng.random() < 0.80:
+            enriched, _ = socket_gem(enriched, _roll_gem(rng, item.level), rng)
+
+    # Комплект на высоких редкостях.
+    set_id = roll_set_id(item.rarity, rng)
+    if set_id is not None:
+        enriched = replace(enriched, set_id=set_id)
+
+    # Самоцветы и комплекты увеличивают ценность трофея.
+    if enriched.gems or enriched.set_id:
+        power = 1.0 + 0.10 * len(enriched.gems) + (0.15 if enriched.set_id else 0)
+        enriched = replace(
+            enriched,
+            sell_value=max(enriched.sell_value, int(enriched.sell_value * power)),
+        )
+    return enriched
+
+
 def roll_enemy_loot(
     wave: int,
     rank: str,
@@ -618,12 +988,15 @@ def roll_enemy_loot(
     # Отдельный баланс предметов за элитников и боссов.
     level = 1 + (wave - 1) // 5
     return tuple(
-        generate_item(
-            level,
-            rng.choices(RARITY_ORDER, weights=weights, k=1)[0],
-            source_wave=wave,
-            act=act_from_wave(wave),
-            rng=rng,
+        _enrich_drop(
+            generate_item(
+                level,
+                rng.choices(RARITY_ORDER, weights=weights, k=1)[0],
+                source_wave=wave,
+                act=act_from_wave(wave),
+                rng=rng,
+            ),
+            rng,
         )
         for _ in range(count)
     )
@@ -632,4 +1005,10 @@ def roll_enemy_loot(
 def item_from_dict(payload: dict[str, Any]) -> Item:
     raw = dict(payload)
     raw["stats"] = StatBlock(**raw.get("stats", {}))
+    raw["gems"] = tuple(
+        Gem(**entry) if isinstance(entry, dict) else entry
+        for entry in raw.get("gems", ())
+    )
+    raw["sockets"] = raw.get("sockets", 0)
+    raw["set_id"] = raw.get("set_id")
     return Item(**raw)

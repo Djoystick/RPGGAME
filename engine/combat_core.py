@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from fractions import Fraction
 
 from PySide6.QtCore import QObject, Signal
@@ -1227,3 +1228,214 @@ class CombatManager(QObject):
             if boss and self.phase == "battle" else None,
             tuple(actors),
         )
+
+
+# =========================================================================
+#  Элементальные статусы (v1.4.0) — Ailment System
+#  Горение, Заморозка/Замедление, Шок, Кровотечение, Яд, Оглушение.
+#  Полностью автономный слой: не трогает существующий боевой цикл, поэтому
+#  подключается отдельно (и полностью покрыт тестами).
+# =========================================================================
+
+
+class AilmentType(str, Enum):
+    IGNITE = "ignite"
+    CHILL = "chill"          # замедление; при 6 стаках — полная заморозка
+    SHOCK = "shock"
+    BLEED = "bleed"
+    POISON = "poison"
+    STUN = "stun"
+
+
+# Пороги и длительности.
+AILMENT_CAP = {
+    AilmentType.IGNITE: 5,
+    AilmentType.CHILL: 6,
+    AilmentType.SHOCK: 1,
+    AilmentType.BLEED: 8,
+    AilmentType.POISON: 6,
+    AilmentType.STUN: 1,
+}
+AILMENT_DURATION = {
+    AilmentType.IGNITE: 4.0,
+    AilmentType.CHILL: 3.0,
+    AilmentType.SHOCK: 3.0,
+    AilmentType.BLEED: 5.0,
+    AilmentType.POISON: 6.0,
+    AilmentType.STUN: 1.0,
+}
+AILMENT_TICK = {
+    AilmentType.IGNITE: 0.5,
+    AilmentType.CHILL: 0.0,   # не тикает уроном
+    AilmentType.SHOCK: 0.0,
+    AilmentType.BLEED: 1.0,
+    AilmentType.POISON: 1.0,
+    AilmentType.STUN: 0.0,
+}
+
+# Яд разъедает броню: -6% за стак.
+POISON_ARMOR_PENETRATION = 0.06
+# Яд режет исцеление на 50%.
+POISON_HEALING_MULTIPLIER = 0.50
+# Замедление при охлаждении: 40%.
+CHILL_SPEED_MULTIPLIER = 0.60
+# Шок: цель получает на 25% больше урона.
+SHOCK_DAMAGE_TAKEN = 0.25
+# Дробящее оружие по полностью замороженной цели — раскалывание x2.
+SHATTER_MULTIPLIER = 2.0
+CHILL_FREEZE_STACKS = 6
+
+# Доля «мощности» удара, выжигаемая тиком Горения.
+IGNITE_TICK_RATE = 0.10
+BLEED_TICK_RATE = 0.07
+POISON_TICK_RATE = 0.05
+
+
+@dataclass(frozen=True)
+class AilmentTick:
+    kind: AilmentType
+    stacks: int
+    damage: float
+    element: str
+
+
+@dataclass
+class AilmentState:
+    """Текущий стак статуса одного типа на одной цели."""
+    kind: AilmentType
+    stacks: int = 1
+    power: float = 0.0
+    remaining: float = 0.0
+    tick_timer: float = 0.0
+    tick_interval: float = 0.0
+
+    @property
+    def frozen(self) -> bool:
+        return self.kind == AilmentType.CHILL and self.stacks >= CHILL_FREEZE_STACKS
+
+
+class AilmentSystem:
+    """Контейнер статусов (id цели -> {тип: состояние})."""
+
+    def __init__(self) -> None:
+        self._units: dict[str, dict[AilmentType, AilmentState]] = {}
+        self._ticks: list[AilmentTick] = []
+
+    def clear(self) -> None:
+        self._units.clear()
+        self._ticks.clear()
+
+    def inflict(
+        self,
+        unit_id: str,
+        kind: AilmentType,
+        magnitude: float,
+    ) -> None:
+        """Наложить/освежить статус. Стаки растут до капа, мощность — максимум."""
+        kind = AilmentType(kind)
+        per_unit = self._units.setdefault(unit_id, {})
+        state = per_unit.get(kind)
+        cap = AILMENT_CAP[kind]
+        if state is None:
+            state = AilmentState(
+                kind=kind,
+                stacks=1,
+                power=max(0.0, magnitude),
+                remaining=AILMENT_DURATION[kind],
+                tick_interval=AILMENT_TICK[kind],
+                tick_timer=AILMENT_TICK[kind],
+            )
+            per_unit[kind] = state
+            return
+        state.stacks = min(cap, state.stacks + 1)
+        state.power = max(state.power, max(0.0, magnitude))
+        state.remaining = AILMENT_DURATION[kind]
+
+    def stacks(self, unit_id: str, kind: AilmentType) -> int:
+        state = self._units.get(unit_id, {}).get(kind)
+        return state.stacks if state else 0
+
+    def is_frozen(self, unit_id: str) -> bool:
+        state = self._units.get(unit_id, {}).get(AilmentType.CHILL)
+        return bool(state and state.frozen)
+
+    def damage_taken_multiplier(self, unit_id: str) -> float:
+        """Доп. множитель получаемого урона (шок)."""
+        if self.stacks(unit_id, AilmentType.SHOCK) > 0:
+            return 1.0 + SHOCK_DAMAGE_TAKEN
+        return 1.0
+
+    def armor_multiplier(self, unit_id: str) -> float:
+        """Яд разъедает броню цели."""
+        poison = self.stacks(unit_id, AilmentType.POISON)
+        return max(0.0, 1.0 - poison * POISON_ARMOR_PENETRATION)
+
+    def healing_multiplier(self, unit_id: str) -> float:
+        if self.stacks(unit_id, AilmentType.POISON) > 0:
+            return POISON_HEALING_MULTIPLIER
+        return 1.0
+
+    def speed_multiplier(self, unit_id: str) -> float:
+        """Замедление (или полная остановка при заморозке)."""
+        state = self._units.get(unit_id, {}).get(AilmentType.CHILL)
+        if state is None:
+            return 1.0
+        if state.frozen:
+            return 0.0
+        return CHILL_SPEED_MULTIPLIER
+
+    def tick(self, dt: float) -> list[AilmentTick]:
+        """Продвинуть статусы; вернуть тики урона (Горение/Кровь/Яд)."""
+        dt = max(0.0, dt)
+        produced: list[AilmentTick] = []
+        expired: list[tuple[str, AilmentType]] = []
+        for unit_id, per_unit in self._units.items():
+            for kind, state in list(per_unit.items()):
+                state.remaining -= dt
+                if state.remaining <= 0:
+                    expired.append((unit_id, kind))
+                    continue
+                if state.tick_interval <= 0:
+                    continue
+                state.tick_timer -= dt
+                if state.tick_timer <= 0:
+                    state.tick_timer += state.tick_interval
+                    rate = {
+                        AilmentType.IGNITE: IGNITE_TICK_RATE,
+                        AilmentType.BLEED: BLEED_TICK_RATE,
+                        AilmentType.POISON: POISON_TICK_RATE,
+                    }.get(kind, 0.0)
+                    damage = state.power * state.stacks * rate
+                    produced.append(AilmentTick(
+                        kind=kind, stacks=state.stacks, damage=damage,
+                        element=_ailment_element(kind),
+                    ))
+        for unit_id, kind in expired:
+            del self._units[unit_id][kind]
+            if not self._units[unit_id]:
+                del self._units[unit_id]
+        self._ticks.extend(produced)
+        return produced
+
+    def pop_ticks(self) -> list[AilmentTick]:
+        produced = self._ticks
+        self._ticks = []
+        return produced
+
+
+def _ailment_element(kind: AilmentType) -> str:
+    return {
+        AilmentType.IGNITE: "fire",
+        AilmentType.CHILL: "cold",
+        AilmentType.SHOCK: "lightning",
+        AilmentType.BLEED: "physical",
+        AilmentType.POISON: "chaos",
+        AilmentType.STUN: "physical",
+    }[kind]
+
+
+def crushing_shatter(base_multiplier: float, frozen: bool, crushing: bool) -> float:
+    """Множитель дробящего удара по замороженной цели (раскалывание)."""
+    if frozen and crushing:
+        return base_multiplier * SHATTER_MULTIPLIER
+    return base_multiplier

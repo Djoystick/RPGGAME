@@ -104,6 +104,17 @@ class SpriteLoader:
             "warlock": "pyromancer",
             "priest": "paladin",
             "fire_imp": "imp",
+            # Расширенный бестиарий v1.4.0 опирается на уже прорисованные
+            # силуэты, сохраняя узнаваемость и читаемость на малом экране.
+            "bone_archer": "skeleton",
+            "grave_horror": "imp",
+            "ash_reaver": "skeleton",
+            "plague_ghoul": "spider",
+            "bog_witch": "dryad",
+            "mangrove_brute": "golem",
+            "cinder_spawn": "imp",
+            "magma_giant": "golem",
+            "rift_herald": "inquisitor",
         }
         key = aliases.get(key, key)
 
@@ -419,6 +430,9 @@ class SpriteLoader:
                 "wraith": ("#365d77", "#78afc2", "#d9f2eb"),
                 "dryad": ("#395b42", "#72a26b", "#dac37a"),
                 "inquisitor": ("#593c62", "#98618f", "#efad88"),
+                "funeral_wraith": ("#5a4a7d", "#a88ac2", "#ecd2ff"),
+                "void_reaper": ("#24304d", "#6b7fb0", "#cf9aff"),
+                "distortion_eye": ("#6a2f52", "#c25a8f", "#ffd0ff"),
             }
             base, light, eyes = palettes.get(
                 key, ("#584262", "#a27093", "#e6be78")

@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (
 )
 
 from models.item import (
-    ACT_LORE, ACT_NAMES, EquipmentSlot, Item,
+    ACT_LORE, ACT_NAMES, EquipmentSlot, GEM_NAMES,
+    ITEM_SET_BY_ID, Item,
     PREFIX_BY_ID, Rarity, SUFFIX_BY_ID,
 )
 from models.stats import StatBlock
@@ -151,6 +152,30 @@ def item_tooltip(item: Item) -> str:
     affix_html = "<br>".join(escape(line) for line in affixes)
     stats_html = escape(stats_text(item.stats)).replace("\n", "<br>")
 
+    # Гнёзда и самоцветы.
+    socket_html = ""
+    if item.sockets:
+        socket_html = (
+            f"<span style='color:#d9b98c;'>Гнёзда: {'◇' * (item.sockets - len(item.gems))}"
+            f"{'◆' * len(item.gems)}</span>"
+        )
+    if item.gems:
+        gem_lines = " · ".join(
+            GEM_NAMES.get(gem.gem_type, str(gem.gem_type))
+            for gem in item.gems
+        )
+        socket_html += (
+            f"<br><span style='color:#9f8fc4;'>Самоцветы: {escape(gem_lines)}</span>"
+        )
+
+    # Комплект экипировки.
+    set_html = ""
+    if item.set_id and item.set_id in ITEM_SET_BY_ID:
+        entry = ITEM_SET_BY_ID[item.set_id]
+        set_html = (
+            f"<br><span style='color:#ffd98a;'>◆ Комплект «{escape(entry.name)}»</span>"
+        )
+
     return f"""
     <table width="300" cellpadding="5" cellspacing="0">
       <tr><td align="center">
@@ -165,6 +190,8 @@ def item_tooltip(item: Item) -> str:
           · Ур. {item.level}
         </span><br>
         <span style="color:#988899;">{escape(origin)}</span>
+        {set_html}
+        {socket_html}
       </td></tr>
       <tr><td><hr>
         <span style="color:#c6aad8;">{affix_html}</span><br>
