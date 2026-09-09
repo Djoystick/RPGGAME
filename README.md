@@ -4,8 +4,8 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GUI](https://img.shields.io/badge/GUI-PySide6-green.svg)
-![Version](https://img.shields.io/badge/Version-v1.2.0-gold.svg)
-![Tests](https://img.shields.io/badge/Tests-115%2F115%20Passing-brightgreen.svg)
+![Version](https://img.shields.io/badge/Version-v1.4.0-gold.svg)
+![Tests](https://img.shields.io/badge/Tests-139%2F139%20Passing-brightgreen.svg)
 
 ---
 
@@ -56,4 +56,4 @@ python main.py
 ```bash
 python -m unittest discover -s tests -v
 ```
-*(Все 115 автотестов проходят со 100% успехом)*
+*(Все 139 автотестов проходят со 100% успехом)*

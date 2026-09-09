@@ -92,11 +92,65 @@ BESTIARY[Act.FOREST] += (
     ),
 )
 
+# Дополнительная гамма монстров (v1.4.0) — богатый бестиарий.
+BESTIARY[Act.CRYPTS] += (
+    EnemyTemplate("bone_archer", "Костяной лучник", Act.CRYPTS,
+                  120, 26, 8, 1.9, 42, True),
+    EnemyTemplate("grave_horror", "Могильный ужас", Act.CRYPTS,
+                  200, 28, 16, 1.8, 40),
+    EnemyTemplate("funeral_wraith", "Погребальная тень", Act.CRYPTS,
+                  105, 25, 3, 1.6, 66, True),
+)
+BESTIARY[Act.FOREST] += (
+    EnemyTemplate("plague_ghoul", "Чумной упырь", Act.FOREST,
+                  190, 27, 10, 1.4, 60),
+    EnemyTemplate("bog_witch", "Болотная ведьма", Act.FOREST,
+                  150, 30, 6, 2.0, 40, True),
+    EnemyTemplate("mangrove_brute", "Мангровый ломовик", Act.FOREST,
+                  250, 33, 20, 2.1, 34),
+)
+BESTIARY[Act.CALDERA] += (
+    EnemyTemplate("cinder_spawn", "Угольное отродье", Act.CALDERA,
+                  130, 34, 8, 1.3, 70, True),
+    EnemyTemplate("magma_giant", "Магматический колосс", Act.CALDERA,
+                  330, 40, 38, 2.4, 26),
+    EnemyTemplate("ash_reaver", "Пеплолов", Act.CALDERA,
+                  220, 37, 20, 1.6, 46),
+)
+BESTIARY[Act.CITADEL] += (
+    EnemyTemplate("void_reaper", "Теневой жнец", Act.CITADEL,
+                  230, 45, 12, 1.7, 56, True),
+    EnemyTemplate("distortion_eye", "Глаз искажения", Act.CITADEL,
+                  170, 40, 10, 1.4, 60, True),
+    EnemyTemplate("rift_herald", "Глашатай разлома", Act.CITADEL,
+                  300, 48, 26, 1.9, 40),
+)
+
+# Прочность, чтобы бестиарий выглядел «обильным»: всего уникальных типов.
+def _total_enemy_types() -> int:
+    return sum(len(tuple(value)) for value in BESTIARY.values())
+
+
+TOTAL_ENEMY_TYPES = _total_enemy_types()
+
+# Боссы актов получают собственный масштаб отрисовки (пол-экрана арены).
+BOSS_SPRITE_SIZE = 60          # базовый спрайт босса в логических px
+BOSS_AURA = True               # багрово-золотая аура на боссах актов
+BOSS_ELITE_AURA = "#c0202f"
+
 BOSS_NAMES = {
     Act.CRYPTS: "Костяной Архонт",
     Act.FOREST: "Сердце Гнили",
     Act.CALDERA: "Владыка Пепла",
     Act.CITADEL: "Хранитель Разлома",
+}
+
+# Визуальные «роды» для элитных ауров по актам.
+ELITE_AURA_COLORS = {
+    Act.CRYPTS: "#9f9cff",
+    Act.FOREST: "#7fe08a",
+    Act.CALDERA: "#ff9340",
+    Act.CITADEL: "#c85bff",
 }
 
 

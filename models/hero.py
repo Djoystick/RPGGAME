@@ -7,7 +7,7 @@ from fractions import Fraction
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Sequence
 
-from models.item import Item, ItemKind, item_from_dict
+from models.item import Item, ItemKind, apply_item_set_bonuses, item_from_dict
 from models.stats import StatBlock
 
 if TYPE_CHECKING:
@@ -494,6 +494,10 @@ class Hero:
         )
         for item in self.equipment:
             stats = stats + item.stats
+
+        # Бонусы комплектов (2/4/6 предметов) — см. models/item.apply_item_set_bonuses.
+        set_bonus, _active = apply_item_set_bonuses(self.equipment)
+        stats = stats + set_bonus
         return stats
 
     def secondary_stats(

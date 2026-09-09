@@ -86,6 +86,17 @@ class StatBlock:
             for definition in fields(self)
         })
 
+    def __sub__(self, other: StatBlock) -> StatBlock:
+        if not isinstance(other, StatBlock):
+            return NotImplemented
+        return StatBlock(**{
+            definition.name: (
+                getattr(self, definition.name)
+                - getattr(other, definition.name)
+            )
+            for definition in fields(self)
+        })
+
     def scaled(self, factor: float) -> StatBlock:
         if type(factor) not in (int, float) or not math.isfinite(factor):
             raise ValueError("Множитель должен быть конечным числом")

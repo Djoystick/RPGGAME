@@ -439,10 +439,13 @@ class MainWindow(QWidget):
 
     def _refresh_header(self, *_args) -> None:
         data = self.state.data
+        from engine.biomes import biome_for_wave
+        location = biome_for_wave(data.current_wave)
         self.gold.setText(f"✦ {data.gold:,}")
         self.header.setToolTip(
             f"Золото: {data.gold:,}\n"
             f"Волна: {data.current_wave:,}\n"
+            f"Локация: {location.name}\n"
             "Перетащите заголовок, чтобы переместить виджет"
         )
 

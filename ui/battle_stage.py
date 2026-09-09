@@ -662,7 +662,8 @@ class BattleStage(QWidget):
         dpr = self.devicePixelRatioF()
 
         for actor in sorted(self._frame.actors, key=lambda entry: entry.y):
-            size = 48 if actor.boss else 36
+            # Боссы актов — крупные, пол-экрана арены; элиты крупнее обычных.
+            size = 54 if actor.boss else (42 if actor.elite else 36)
             animator = self._animations.setdefault(
                 actor.actor_id, AnimationController()
             )
@@ -675,6 +676,29 @@ class BattleStage(QWidget):
             pixmap = frames[animator.frame_index % len(frames)]
 
             painter.save()
+
+            # Багрово-золотая аура элит и боссов (v1.4.0).
+            if actor.enemy and (actor.boss or actor.elite):
+                aura_r = (0.62 + 0.1 * math.sin(self._visual_time * 4)) * size
+                aura = QRadialGradient(
+                    QPointF(actor.x, actor.y - size * 0.55), aura_r * 2
+                )
+                aura_color = (
+                    QColor("#ff5a3c")
+                    if actor.boss else QColor("#f5d45c")
+                )
+                aura.setColorAt(0, QColor(
+                    aura_color.red(), aura_color.green(), aura_color.blue(), 40
+                ))
+                aura.setColorAt(1, QColor(
+                    aura_color.red(), aura_color.green(), aura_color.blue(), 0
+                ))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(aura)
+                painter.drawEllipse(
+                    QPointF(actor.x, actor.y - size * 0.55), aura_r, aura_r
+                )
+
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(0, 0, 0, 75))
             painter.drawEllipse(QRectF(actor.x - 12, actor.y - 3, 24, 5))
