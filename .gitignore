@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local backup copies
+*.bak
+*.bak*
+
+# Application lock & user data overrides
+*.lock
+application.lock
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE & Editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
