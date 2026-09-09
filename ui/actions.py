@@ -10,6 +10,13 @@ import config as C
 from engine.combat_manager import CombatManager
 from engine.cube_synth import CubeSynth
 from engine.runes_tree import RunesTree
+from engine.shop import (
+    buy_data,
+    junk_ids,
+    merchant_price,
+    roll_merchant_stock,
+    sell_rarity_ids,
+)
 from engine.save_manager import SaveError, SaveManager
 from engine.state import GameData, GameState
 from models.hero import Hero, HeroBuild, PRIMARY_STAT_KEYS, default_build
@@ -216,6 +223,62 @@ class UiActions(QObject):
         item = result_holder[0].item
         self.notice.emit(
             f"Синтез: {item.display_name} · {item.rarity.value} · Lv.{item.level}"
+        )
+
+    # ---- Лавка Бездны (продажа и покупка) --------------------------------
+
+    def roll_stock(self, count: int = 6):
+        """Свежая полка товаров торговца на основе текущего прогресса."""
+        self.state.assert_owner_thread()
+        return roll_merchant_stock(self.state.data, count=count)
+
+    def sell_items(self, ids: tuple[str, ...]) -> int:
+        """Продать предметы (из рюкзака или тайника) за золото."""
+        outcome = {}
+
+        def transform(data: GameData) -> GameData:
+            before = data.gold
+            updated = sell_rarity_ids(data, ids)
+            outcome["gold_gain"] = updated.gold - before
+            outcome["count"] = len(ids)
+            return updated
+
+        self._transaction(transform)
+        gain = outcome["gold_gain"]
+        self.notice.emit(f"Продано {outcome['count']} · +{gain:,} золота")
+        return gain
+
+    def sell_junk(self) -> int:
+        """Мгновенно распродать обычный/необычный хлам из рюкзака и тайника."""
+        outcome = {}
+
+        def transform(data: GameData) -> GameData:
+            ids = junk_ids(data)
+            if not ids:
+                raise ValueError("Продавать нечего: обычных предметов нет")
+            before = data.gold
+            updated = sell_rarity_ids(data, ids)
+            outcome["gold_gain"] = updated.gold - before
+            outcome["count"] = len(ids)
+            return updated
+
+        self._transaction(transform)
+        gain = outcome["gold_gain"]
+        self.notice.emit(
+            f"Автопродажа хлама: {outcome['count']} вещей · +{gain:,} золота"
+        )
+        return gain
+
+    def buy_offer(self, item) -> None:
+        """Купить выставленный товар за золото (кладётся в рюкзак/тайник)."""
+
+        def transform(data: GameData) -> GameData:
+            return buy_data(data, item)
+
+        self._transaction(transform)
+        self.notice.emit(
+            f"Покупка: {item.display_name} · {item.rarity.value} · "
+            f"{merchant_price(item):,} золота"
         )
 
     def allocate_stat(self, hero_id: str, stat_key: str) -> None:

@@ -469,6 +469,10 @@ class ItemGrid(QListWidget):
             for entry in self.selectedItems()
         )
 
+    def item_for_id(self, item_id: str) -> Item | None:
+        """Вернуть предмет, отображаемый этой сеткой (или None)."""
+        return self._items_by_id.get(item_id)
+
     def _show_card(self, entry: QListWidgetItem) -> None:
         item = self._items_by_id.get(entry.data(Qt.ItemDataRole.UserRole))
         if item is not None:

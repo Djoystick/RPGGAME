@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GUI](https://img.shields.io/badge/GUI-PySide6-green.svg)
 ![Version](https://img.shields.io/badge/Version-v1.2.0-gold.svg)
-![Tests](https://img.shields.io/badge/Tests-100%2F100%20Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-115%2F115%20Passing-brightgreen.svg)
 
 ---
 
@@ -31,6 +31,8 @@
 - ⏳ **Истинный оффлайн-прогресс**: математический расчет волн, золота и опыта при закрытой игре (2–12 часов) с защитой от накрутки системного времени.
 - 🌌 **Древо Рун (Runes Constellation Web)**: паутина созвездий из 151 узла с великими рунами (Keystones).
 - 🔮 **Куб Синтеза (Horadric Cube)**: трансмутация и крафт экипировки.
+- ⚖️ **Лавка Бездны (Shop)**: торговец выкупает любой лут за золото (с наценкой рун «Цена продажи») и продаёт снаряжение уровня отряда; всё происходит в idle-режиме без активных кликов.
+- 🎛️ **Полированный инвентарь**: фильтр по редкости, контекстная продажа, древо рун с живым поиском и анимированный круг трансмутации.
 
 ---
 
@@ -54,4 +56,4 @@ python main.py
 ```bash
 python -m unittest discover -s tests -v
 ```
-*(Все 100 автотестов проходят со 100% успехом)*
+*(Все 115 автотестов проходят со 100% успехом)*

@@ -36,6 +36,7 @@ from ui.gothic_frame import GothicFrame
 from ui.panels.cube_panel import CubePanel
 from ui.panels.hero_panel import HeroPanel
 from ui.panels.runes_panel import RunesPanel
+from ui.panels.shop_panel import ShopPanel
 from ui.panels.stash_panel import StashPanel
 
 
@@ -109,6 +110,7 @@ class MainWindow(QWidget):
         "stash": (420, 550),
         "cube": (390, 640),
         "runes": (790, 650),
+        "shop": (440, 720),
     }
 
     PANEL_TITLES = {
@@ -116,6 +118,7 @@ class MainWindow(QWidget):
         "stash": "СУНДУК",
         "cube": "КУБ СИНТЕЗА",
         "runes": "ДРЕВО РУН",
+        "shop": "ЛАВКА БЕЗДНЫ",
     }
 
     def __init__(
@@ -213,6 +216,7 @@ class MainWindow(QWidget):
             ("ГЕРОЙ", "hero"),
             ("СУНДУК", "stash"),
             ("КУБ", "cube"),
+            ("ЛАВКА", "shop"),
             ("РУНЫ", "runes"),
         ):
             button = QPushButton(caption)
@@ -234,11 +238,13 @@ class MainWindow(QWidget):
         self.hero_panel = HeroPanel(self.actions)
         self.stash_panel = StashPanel(self.actions)
         self.cube_panel = CubePanel(self.actions)
+        self.shop_panel = ShopPanel(self.actions)
         self.runes_panel = RunesPanel(self.actions)
 
         self.drawer.add_panel("hero", self.hero_panel, 840)
         self.drawer.add_panel("stash", self.stash_panel, 470)
         self.drawer.add_panel("cube", self.cube_panel, 550)
+        self.drawer.add_panel("shop", self.shop_panel, 700)
         self.drawer.add_panel("runes", self.runes_panel, 460)
 
         self.hero_panel.navigate.connect(self.navigate)
@@ -399,6 +405,8 @@ class MainWindow(QWidget):
 
         if page == "hero":
             self.hero_panel.refresh()
+        elif page == "shop":
+            self.shop_panel.refresh()
         elif page == "runes":
             QTimer.singleShot(0, self.runes_panel.view.fit_tree)
 

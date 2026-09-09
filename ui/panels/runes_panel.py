@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
 )
 
@@ -120,6 +121,17 @@ class RunesPanel(GothicFrame):
         self.header = QLabel()
         self.body.addWidget(self.header)
 
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("Найти руну:"))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("имя руны…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMaximumWidth(240)
+        self.search.textChanged.connect(self.refresh)
+        search_row.addWidget(self.search)
+        search_row.addStretch(1)
+        self.body.addLayout(search_row)
+
         self.scene = QGraphicsScene(self)
         self.scene.setSceneRect(-760, -760, 1520, 1520)
         self.view = RuneView(self.scene)
@@ -211,12 +223,18 @@ class RunesPanel(GothicFrame):
             f"Эффективность {data.offline_efficiency:.0%}"
         )
 
+        query = self.search.text().strip().lower()
+
         for node_id, item in self._nodes.items():
             node = tree.nodes[node_id]
             unlocked = node_id in owned
             connected = set(node.prerequisites) <= owned
             affordable = data.gold >= node.cost
             color = QColor(SECTOR_COLORS[node.sector])
+
+            matched = node_id == self.selected_id or not query \
+                or query in node.name.lower()
+            item.setOpacity(1.0 if matched else 0.14)
 
             if unlocked:
                 item.setBrush(QBrush(color))
